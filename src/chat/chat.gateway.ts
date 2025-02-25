@@ -82,7 +82,7 @@ export class ChatGateway {
   }
 
   @SubscribeMessage('send-message')
-  async handleMessage(
+  async handleSendMessage(
     @MessageBody()
     data: {
       chatId: string;
