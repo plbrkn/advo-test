@@ -39,4 +39,36 @@ describe('UsersService', () => {
     expect(newMessage.content).toBe(message.content);
     expect(newMessage.status).toBe('CREATED');
   });
+
+  it('should be read the message', async () => {
+    const message = {
+      id: '1',
+      status: 'READ',
+    };
+
+    jest
+      .spyOn(prismaService.message, 'update')
+      .mockResolvedValue(message as any);
+
+    const updatedMessage = await service.readMessage(message.id);
+
+    expect(updatedMessage.id).toBe(message.id);
+    expect(updatedMessage.status).toBe('READ');
+  });
+
+  it('should be deliver the message', async () => {
+    const message = {
+      id: '1',
+      status: 'DELIVERED',
+    };
+
+    jest
+      .spyOn(prismaService.message, 'update')
+      .mockResolvedValue(message as any);
+
+    const updatedMessage = await service.deliverMessage(message.id);
+
+    expect(updatedMessage.id).toBe(message.id);
+    expect(updatedMessage.status).toBe('DELIVERED');
+  });
 });

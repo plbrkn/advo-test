@@ -24,4 +24,22 @@ export class MessageService {
       },
     });
   }
+
+  async readMessage(messageId: string): Promise<Message> {
+    return this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: MessageStatus.READ,
+      },
+    });
+  }
+
+  async deliverMessage(messageId: string): Promise<Message> {
+    return this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: MessageStatus.DELIVERED,
+      },
+    });
+  }
 }
