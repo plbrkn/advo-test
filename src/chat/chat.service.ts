@@ -32,7 +32,11 @@ export class ChatService {
     }
 
     return this.prisma.chat.create({
-      data: {},
+      data: {
+        users: {
+          connect: usersIds.map((id) => ({ id })),
+        },
+      },
       include: {
         users: true,
       },
@@ -43,16 +47,29 @@ export class ChatService {
     return this.prisma.chat.findUnique({ where: { id } });
   }
 
+  async getChatByIdWithUserId(
+    id: string,
+    userId: string,
+  ): Promise<Chat | null> {
+    return this.prisma.chat.findUnique({
+      where: {
+        id,
+        users: {
+          some: { id: userId },
+        },
+      },
+    });
+  }
+
   private async existsChatWithUsers(usersIds: Array<string>): Promise<boolean> {
     const chat = await this.prisma.chat.findFirst({
       where: {
         users: {
-          every: {
-            id: {
-              in: usersIds,
-            },
-          },
+          some: { id: { in: usersIds } },
         },
+      },
+      include: {
+        users: true,
       },
     });
 
