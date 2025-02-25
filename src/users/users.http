@@ -1,0 +1,11 @@
+@baseUrl = http://localhost:3000
+@userId = a58cf93e-e027-4e25-93b2-1b25b3268380
+
+### Создать нового пользователя
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{}
+
+### Получить пользователя по ID
+GET {{baseUrl}}/users/{{userId}}
