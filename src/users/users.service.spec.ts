@@ -41,4 +41,13 @@ describe('UsersService', () => {
     const user = await service.getUserById('test-user-id');
     expect(user).toBeNull();
   });
+
+  it('should check if a user exists', async () => {
+    jest
+      .spyOn(prismaService.user, 'findUnique')
+      .mockResolvedValue({ id: 'test-user-id' });
+
+    const userExists = await service.existsUser('test-user-id');
+    expect(userExists).toBe(true);
+  });
 });
