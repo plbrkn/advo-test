@@ -26,19 +26,25 @@ export class MessageService {
   }
 
   async readMessage(messageId: string): Promise<Message> {
-    return this.prisma.message.update({
-      where: { id: messageId },
-      data: {
-        status: MessageStatus.READ,
-      },
-    });
+    return this.updateMessageStatus(messageId, MessageStatus.READ);
   }
 
   async deliverMessage(messageId: string): Promise<Message> {
+    return this.updateMessageStatus(messageId, MessageStatus.DELIVERED);
+  }
+
+  async dispatchMessage(messageId: string): Promise<Message> {
+    return this.updateMessageStatus(messageId, MessageStatus.DISPATCHED);
+  }
+
+  private updateMessageStatus(
+    messageId: string,
+    status: MessageStatus,
+  ): Promise<Message> {
     return this.prisma.message.update({
       where: { id: messageId },
       data: {
-        status: MessageStatus.DELIVERED,
+        status,
       },
     });
   }

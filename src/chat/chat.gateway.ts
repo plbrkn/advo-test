@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -7,9 +8,11 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
-
 import { ChatService } from './chat.service';
 import { MessageService } from '../message/message.service';
+import { BrokerService } from '../broker/broker.service';
+import { Message } from '@prisma/client';
+import { ExtendedMessage, RMQMessage, RMQRoute } from 'nestjs-rmq';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -23,15 +26,8 @@ export class ChatGateway {
   constructor(
     private readonly chatService: ChatService,
     private readonly messageService: MessageService,
+    private readonly brokerService: BrokerService,
   ) {}
-
-  handleConnection(client: Socket) {
-    this.logger.log(`Клиент подключился: ${client.id}`);
-  }
-
-  handleDisconnect(client: Socket) {
-    this.logger.log(`Клиент отключился: ${client.id}`);
-  }
 
   @SubscribeMessage('create-chat')
   async handleCreateChat(
@@ -103,20 +99,20 @@ export class ChatGateway {
       throw new Error(`Чат с id ${chatId} не найден`);
     }
 
-    const message = await this.messageService.createMessage(
-      chatId,
-      senderId,
-      content,
-    );
-
-    client.emit('message-sended', {
+    client.emit('message-queued', {
       chatId,
       senderId,
       content,
       status: 'QUEUED',
     });
 
-    this.server.to(this.makeRoomName(chatId)).emit('new-message', message);
+    const message = await this.messageService.createMessage(
+      chatId,
+      senderId,
+      content,
+    );
+
+    await this.brokerService.publishMessage(message);
   }
 
   @SubscribeMessage('read-message')
@@ -137,6 +133,23 @@ export class ChatGateway {
     this.server
       .to(this.makeRoomName(data.chatId))
       .emit('message-read', message);
+  }
+
+  @RMQRoute('chat_message')
+  async handleChatMessage(message: Message, @RMQMessage msg: ExtendedMessage) {
+    this.logger.log(
+      `Получено сообщение из RabbitMQ: ${JSON.stringify(message)}`,
+    );
+
+    const dispatchMessage = await this.messageService.dispatchMessage(
+      message.id,
+    );
+
+    this.server
+      .to(this.makeRoomName(message.chatId))
+      .emit('new-message', dispatchMessage);
+
+    return dispatchMessage;
   }
 
   private makeRoomName(chatId: string) {

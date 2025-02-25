@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { RMQModule } from 'nestjs-rmq';
 
 import { BrokerService } from './broker.service';
-import { BrokerController } from './broker.controller';
+import { MessageModule } from '../message/message.module';
 
 @Module({
   imports: [
@@ -21,9 +21,9 @@ import { BrokerController } from './broker.controller';
       ],
       queueName: 'chat_messages',
     }),
+    MessageModule,
   ],
   providers: [BrokerService],
-  controllers: [BrokerController],
   exports: [BrokerService],
 })
 export class BrokerModule {}

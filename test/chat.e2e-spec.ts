@@ -74,8 +74,8 @@ describe('ChatGateway (e2e)', () => {
     );
     const chatId = chatCreated.chatId;
 
-    clientSocket1.emit('join-chat', { chatId });
-    clientSocket2.emit('join-chat', { chatId });
+    clientSocket1.emit('join-chat', { chatId, userId: user1.body.id });
+    clientSocket2.emit('join-chat', { chatId, userId: user2.body.id });
 
     const [join1, join2] = await Promise.all([
       waitForEvent<{ chatId: string }>(clientSocket1, 'chat-joined'),
@@ -94,7 +94,7 @@ describe('ChatGateway (e2e)', () => {
     const [messageSended1, newMessage1] = await Promise.all([
       waitForEvent<{ chatId: string; senderId: string; content: string }>(
         clientSocket1,
-        'message-sended',
+        'message-queued',
       ),
       waitForEvent<{
         id: string;
