@@ -119,6 +119,26 @@ export class ChatGateway {
     this.server.to(this.makeRoomName(chatId)).emit('new-message', message);
   }
 
+  @SubscribeMessage('read-message')
+  async handleReadMessage(
+    @MessageBody()
+    data: {
+      chatId: string;
+      messageId: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
+    this.logger.log(
+      `Получено сообщение от ${client.id}: ${JSON.stringify(data)}`,
+    );
+
+    const message = await this.messageService.readMessage(data.messageId);
+
+    this.server
+      .to(this.makeRoomName(data.chatId))
+      .emit('message-read', message);
+  }
+
   private makeRoomName(chatId: string) {
     return `chat-${chatId}`;
   }
