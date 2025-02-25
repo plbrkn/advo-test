@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
@@ -7,6 +7,24 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { io, Socket } from 'socket.io-client';
 import * as request from 'supertest';
+
+const waitForEvent = <T>(
+  socket: Socket,
+  event: string,
+  timeout = 3000,
+): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(event);
+      reject(new Error(`Timeout waiting for event: ${event}`));
+    }, timeout);
+
+    socket.once(event, (data: T) => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+  });
+};
 
 describe('ChatGateway (e2e)', () => {
   let app: INestApplication;
@@ -23,7 +41,6 @@ describe('ChatGateway (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     await app.listen(3000);
-
     await app.init();
 
     clientSocket1 = io(baseUrl, { transports: ['websocket'] });
@@ -46,59 +63,67 @@ describe('ChatGateway (e2e)', () => {
     await app.close();
   });
 
-  it('should create chat successfully', (done) => {
+  it('should create chat, send and read messages', async () => {
     clientSocket1.emit('create-chat', {
       usersIds: [user1.body.id, user2.body.id],
     });
 
-    clientSocket1.once('chat-created', (chat: any) => {
-      const chatId = chat.chatId;
+    const chatCreated = await waitForEvent<{ chatId: string }>(
+      clientSocket1,
+      'chat-created',
+    );
+    const chatId = chatCreated.chatId;
 
-      clientSocket1.emit('join-chat', { chatId });
-      clientSocket2.emit('join-chat', { chatId });
+    clientSocket1.emit('join-chat', { chatId });
+    clientSocket2.emit('join-chat', { chatId });
 
-      clientSocket1.once('chat-joined', (data) => {
-        expect(data.chatId).toEqual(chatId);
-      });
+    const [join1, join2] = await Promise.all([
+      waitForEvent<{ chatId: string }>(clientSocket1, 'chat-joined'),
+      waitForEvent<{ chatId: string }>(clientSocket2, 'chat-joined'),
+    ]);
 
-      clientSocket2.once('chat-joined', (data) => {
-        expect(data.chatId).toEqual(chatId);
-      });
+    expect(join1.chatId).toEqual(chatId);
+    expect(join2.chatId).toEqual(chatId);
 
-      clientSocket1.emit('send-message', {
-        chatId,
-        senderId: user1.body.id,
-        content: 'Test Message',
-      });
-
-      clientSocket1.once('message-sended', (data) => {
-        expect(data.chatId).toEqual(chatId);
-        expect(data.senderId).toEqual(user1.body.id);
-        expect(data.content).toEqual('Test Message');
-      });
-
-      clientSocket2.once('new-message', (message) => {
-        expect(message).toHaveProperty('id');
-        expect(message.chatId).toEqual(chatId);
-        expect(message.senderId).toEqual(user1.body.id);
-        expect(message.content).toEqual('Test Message');
-
-        clientSocket2.emit('read-message', {
-          chatId,
-          messageId: message.id,
-        });
-
-        clientSocket1.once('message-read', (data) => {
-          try {
-            expect(data.chatId).toEqual(chatId);
-            expect(data.senderId).toEqual(user1.body.id);
-            expect(data.content).toEqual('Test Message');
-            done();
-          } catch (error) {
-            done(error);
-          }
-        });
-      });
+    clientSocket1.emit('send-message', {
+      chatId,
+      senderId: user1.body.id,
+      content: 'Test Message',
     });
+
+    const [messageSended1, newMessage1] = await Promise.all([
+      waitForEvent<{ chatId: string; senderId: string; content: string }>(
+        clientSocket1,
+        'message-sended',
+      ),
+      waitForEvent<{
+        id: string;
+        chatId: string;
+        senderId: string;
+        content: string;
+      }>(clientSocket2, 'new-message'),
+    ]);
+    expect(messageSended1.chatId).toEqual(chatId);
+    expect(messageSended1.senderId).toEqual(user1.body.id);
+    expect(messageSended1.content).toEqual('Test Message');
+
+    expect(newMessage1).toHaveProperty('id');
+    expect(newMessage1.chatId).toEqual(chatId);
+    expect(newMessage1.senderId).toEqual(user1.body.id);
+    expect(newMessage1.content).toEqual('Test Message');
+
+    clientSocket2.emit('read-message', {
+      chatId,
+      messageId: newMessage1.id,
+    });
+
+    const messageRead = await waitForEvent<{
+      chatId: string;
+      senderId: string;
+      content: string;
+    }>(clientSocket1, 'message-read');
+    expect(messageRead.chatId).toEqual(chatId);
+    expect(messageRead.senderId).toEqual(user1.body.id);
+    expect(messageRead.content).toEqual('Test Message');
   });
 });
