@@ -44,7 +44,9 @@ export class ChatService {
   }
 
   async getChatById(id: string): Promise<Chat | null> {
-    return this.prisma.chat.findUnique({ where: { id } });
+    return this.prisma.chat.findUnique({
+      where: { id },
+    });
   }
 
   async getChatByIdWithUserId(
