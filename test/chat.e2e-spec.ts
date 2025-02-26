@@ -165,8 +165,45 @@ describe('ChatGateway (e2e)', () => {
       senderId: string;
       content: string;
     }>(clientSocket1, 'message-read');
+
     expect(messageRead.chatId).toEqual(chatId);
     expect(messageRead.senderId).toEqual(user1.body.id);
     expect(messageRead.content).toEqual('Test Message');
+
+    clientSocket2.disconnect();
+
+    clientSocket1.emit('send-message', {
+      chatId,
+      senderId: user1.body.id,
+      content: 'Test Message 2',
+    });
+
+    const messageQueued = await waitForEvent<{
+      chatId: string;
+      senderId: string;
+      content: string;
+    }>(clientSocket1, 'message-queued');
+
+    expect(messageQueued.chatId).toEqual(chatId);
+    expect(messageQueued.senderId).toEqual(user1.body.id);
+    expect(messageQueued.content).toEqual('Test Message 2');
+
+    clientSocket2.connect();
+
+    clientSocket2.emit('join-chat', { chatId, userId: user2.body.id });
+
+    await waitForEvent<{ chatId: string }>(clientSocket2, 'chat-joined');
+
+    const newMessage2 = await waitForEvent<{
+      id: string;
+      chatId: string;
+      senderId: string;
+      content: string;
+    }>(clientSocket2, 'new-message');
+
+    expect(newMessage2).toHaveProperty('id');
+    expect(newMessage2.chatId).toEqual(chatId);
+    expect(newMessage2.senderId).toEqual(user1.body.id);
+    expect(newMessage2.content).toEqual('Test Message 2');
   });
 });
