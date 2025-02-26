@@ -1,12 +1,37 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
+
 import { io, Socket } from 'socket.io-client';
 import * as request from 'supertest';
+import { AppBridgeModule } from '../src/app-bridge.module';
+import { Transport } from '@nestjs/microservices';
+
+const bridgeOptions = {
+  transport: Transport.RMQ,
+  options: {
+    urls: ['amqp://guest:guest@localhost:5672'],
+    queue: 'bridge_queue',
+    queueOptions: {
+      durable: false,
+    },
+  },
+};
+
+const mainOptions = {
+  transport: Transport.RMQ,
+  options: {
+    urls: ['amqp://guest:guest@localhost:5672'],
+    queue: 'main_queue',
+    queueOptions: {
+      durable: false,
+    },
+  },
+};
 
 const waitForEvent = <T>(
   socket: Socket,
@@ -27,31 +52,47 @@ const waitForEvent = <T>(
 };
 
 describe('ChatGateway (e2e)', () => {
-  let app: INestApplication;
+  let appMain: INestApplication;
+  let appBridge: INestApplication;
   let clientSocket1: Socket;
   let clientSocket2: Socket;
   let user1;
   let user2;
-  const baseUrl: string = 'http://localhost:3000';
+  const baseUrl: string = 'http://localhost:80';
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const mainModuleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
-    await app.listen(3000);
-    await app.init();
+    const bridgeModuleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppBridgeModule],
+    }).compile();
+
+    appMain = mainModuleFixture.createNestApplication();
+    appBridge = bridgeModuleFixture.createNestApplication();
+
+    appMain.connectMicroservice(mainOptions);
+    appBridge.connectMicroservice(bridgeOptions);
+
+    await appMain.startAllMicroservices();
+    await appBridge.startAllMicroservices();
+
+    await appMain.listen(3000);
+    await appBridge.listen(80);
+
+    await appMain.init();
+    await appBridge.init();
 
     clientSocket1 = io(baseUrl, { transports: ['websocket'] });
     clientSocket2 = io(baseUrl, { transports: ['websocket'] });
 
-    user1 = await request(app.getHttpServer())
+    user1 = await request(appMain.getHttpServer())
       .post('/users')
       .send({})
       .expect(201);
 
-    user2 = await request(app.getHttpServer())
+    user2 = await request(appMain.getHttpServer())
       .post('/users')
       .send({})
       .expect(201);
@@ -60,12 +101,12 @@ describe('ChatGateway (e2e)', () => {
   afterAll(async () => {
     clientSocket1.disconnect();
     clientSocket2.disconnect();
-    await app.close();
+    await appMain.close();
   });
 
   it('should create chat, send and read messages', async () => {
     clientSocket1.emit('create-chat', {
-      usersIds: [user1.body.id, user2.body.id],
+      userIds: [user1.body.id, user2.body.id],
     });
 
     const chatCreated = await waitForEvent<{ chatId: string }>(
@@ -73,6 +114,8 @@ describe('ChatGateway (e2e)', () => {
       'chat-created',
     );
     const chatId = chatCreated.chatId;
+
+    expect(chatId).toBeDefined();
 
     clientSocket1.emit('join-chat', { chatId, userId: user1.body.id });
     clientSocket2.emit('join-chat', { chatId, userId: user2.body.id });
